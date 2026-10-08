@@ -97,7 +97,7 @@ function Home() {
             <div className="hero-art-grid"></div>
 
             <div className="hero-art-text">
-              AK
+             <img src="/logo-ak.svg" alt="AK" />
             </div>
 
             <div className="hero-art-circle"></div>

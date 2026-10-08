@@ -1,6 +1,5 @@
 import telecomCover from "../assets/projects/telecom-network/Cover.jpg";
 import telecomHero from "../assets/projects/telecom-network/hero.jpg";
-
 import telecomImage01 from "../assets/projects/telecom-network/image-01.jpg";
 import telecomImage02 from "../assets/projects/telecom-network/image-02.jpg";
 import telecomImage03 from "../assets/projects/telecom-network/image-03.jpg";

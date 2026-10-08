@@ -340,27 +340,27 @@ color: var(--muted);
 
 /* AK */
 
+/* AK Logo */
+
 .hero-art-text {
   position: absolute;
-
   z-index: 2;
-
   left: 50%;
   top: 50%;
-
   transform: translate(-50%, -50%);
 
-  font-family: "Space Grotesk", sans-serif;
+  width: 52%;
+  max-width: 320px;
 
-  font-size: clamp(130px, 17vw, 250px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 
-  line-height: 1;
-
-  font-weight: 700;
-
-  letter-spacing: -0.1em;
-
-  color: #fff;
+.hero-art-text img {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 
