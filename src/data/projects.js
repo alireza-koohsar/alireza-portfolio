@@ -1,4 +1,4 @@
-import telecomCover from "../assets/projects/telecom-network/cover.jpg";
+import telecomCover from "../assets/projects/telecom-network/Cover.jpg";
 import telecomHero from "../assets/projects/telecom-network/hero.jpg";
 
 import telecomImage01 from "../assets/projects/telecom-network/image-01.jpg";
