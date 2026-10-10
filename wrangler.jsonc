@@ -3,6 +3,12 @@
   "name": "alireza-portfolio",
   "main": "./worker/index.js",
   "compatibility_date": "2026-10-08",
+  "observability": {
+  "logs": {
+    "enabled": true,
+    "invocation_logs": true
+  }
+},
   "assets": {
     "not_found_handling": "single-page-application"
   },
