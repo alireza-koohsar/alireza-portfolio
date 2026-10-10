@@ -8,12 +8,15 @@ import About from "./pages/About";
 import Contact from "./pages/Contact";
 import Resume from "./pages/Resume";
 import ScrollToTop from "./components/ScrollToTop";
+import Admin from "./pages/Admin";
+import "./App.css";
 
 function App() {
   return (
     <BrowserRouter>
       <ScrollToTop />
       <Routes>
+        <Route path="/admin" element={<Admin />} />
         <Route element={<MainLayout />}>
           <Route path="/" element={<Home />} />
           <Route path="/work" element={<Work />} />
