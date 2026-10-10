@@ -1,92 +1,58 @@
+const SESSION_COOKIE = "admin_session";
 const SESSION_DURATION = 60 * 60 * 24;
+const PROJECT_COLUMNS = [
+  "title", "slug", "category", "year", "client", "description", "role",
+  "cover", "hero", "video", "tools", "gallery", "services", "software",
+  "tags", "case_study", "featured", "published", "sort_order",
+];
+const LIST_FIELDS = ["tools", "gallery", "services", "software", "tags"];
 
 function json(data, status = 200, extraHeaders = {}) {
-  return Response.json(data, {
+  return new Response(JSON.stringify(data), {
     status,
-    headers: {
-      "Cache-Control": "no-store",
-      ...extraHeaders,
-    },
+    headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...extraHeaders },
   });
 }
 
 function getCookie(request, name) {
   const cookie = request.headers.get("Cookie") || "";
-  const entry = cookie
-    .split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${name}=`));
-
+  const entry = cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${name}=`));
   return entry ? entry.slice(name.length + 1) : null;
 }
 
-
-
 function bytesToBase64Url(bytes) {
-  const data = new Uint8Array(bytes);
   let binary = "";
-
-  for (let i = 0; i < data.length; i++) {
-    binary += String.fromCharCode(data[i]);
-  }
-
-  return btoa(binary)
-    .replaceAll("+", "-")
-    .replaceAll("/", "_")
-    .replace(/=+$/, "");
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
 function base64UrlToBytes(value) {
-  const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-  const binary = atob(padded);
-
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(normalized + "=".repeat((4 - normalized.length % 4) % 4));
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
 
 async function signSession(payload, secret) {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-
-  const data = new TextEncoder().encode(payload);
-  const signature = await crypto.subtle.sign("HMAC", key, data);
-
-  return bytesToBase64Url(signature);
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const body = bytesToBase64Url(new TextEncoder().encode(JSON.stringify(payload)));
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
+  return `${body}.${bytesToBase64Url(new Uint8Array(signature))}`;
 }
 
 async function verifySession(request, env) {
-  const token = getCookie(request, "admin_session");
+  const token = getCookie(request, SESSION_COOKIE);
   if (!token || !env.ADMIN_SESSION_SECRET) return false;
-
-  const [payload, signature] = token.split(".");
-  if (!payload || !signature) return false;
-
+  const parts = token.split(".");
+  if (parts.length !== 2) return false;
   try {
-    const expected = await signSession(payload, env.ADMIN_SESSION_SECRET);
-    const suppliedBytes = new TextEncoder().encode(signature);
-    const expectedBytes = new TextEncoder().encode(expected);
-
-    if (suppliedBytes.length !== expectedBytes.length) return false;
-
-    let difference = 0;
-    for (let i = 0; i < suppliedBytes.length; i++) {
-      difference |= suppliedBytes[i] ^ expectedBytes[i];
-    }
-    if (difference !== 0) return false;
-
-    const session = JSON.parse(
-      new TextDecoder().decode(base64UrlToBytes(payload)),
-    );
-
-    return (
-      session.exp > Math.floor(Date.now() / 1000) &&
-      session.admin === true
-    );
+    const expected = await signSession(JSON.parse(new TextDecoder().decode(base64UrlToBytes(parts[0]))), env.ADMIN_SESSION_SECRET);
+    const expectedSignature = expected.split(".")[1];
+    if (parts[1].length !== expectedSignature.length) return false;
+    let mismatch = 0;
+    for (let i = 0; i < parts[1].length; i++) mismatch |= parts[1].charCodeAt(i) ^ expectedSignature.charCodeAt(i);
+    if (mismatch !== 0) return false;
+    const payload = JSON.parse(new TextDecoder().decode(base64UrlToBytes(parts[0])));
+    return Number(payload.exp) > Math.floor(Date.now() / 1000) && payload.role === "admin";
   } catch {
     return false;
   }
@@ -94,428 +60,191 @@ async function verifySession(request, env) {
 
 function isSameOrigin(request) {
   const origin = request.headers.get("Origin");
-  if (!origin) return false;
+  if (!origin) return true;
+  try { return new URL(origin).origin === new URL(request.url).origin; }
+  catch { return false; }
+}
 
-  try {
-    return new URL(origin).origin === new URL(request.url).origin;
-  } catch {
-    return false;
-  }
+function parseMaybeJson(value, fallback = []) {
+  if (Array.isArray(value) || (value && typeof value === "object")) return value;
+  if (typeof value !== "string" || !value.trim()) return fallback;
+  try { return JSON.parse(value); } catch { return fallback; }
 }
 
 function normalizeProject(body) {
-  const stringFields = [
-    "title",
-    "slug",
-    "category",
-    "client",
-    "description",
-    "role",
-    "cover",
-    "hero",
-    "video",
-  ];
-
-  const project = {};
-
-  for (const field of stringFields) {
-    project[field] = String(body[field] ?? "").trim();
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("Invalid form data.");
+  const title = String(body.title ?? "").trim();
+  const slug = String(body.slug ?? "").trim();
+  const category = String(body.category ?? "").trim();
+  const description = String(body.description ?? "").trim();
+  if (!title || !slug || !category || !description) {
+    throw new Error("Project title, slug, category, and description are required.");
   }
-
-  project.year =
-    body.year === "" || body.year == null ? null : Number(body.year);
-
-  project.sort_order = Number(body.sort_order ?? 0);
-  project.featured = body.featured ? 1 : 0;
-  project.published = body.published ? 1 : 0;
-
-  for (const field of ["tools", "gallery", "services", "software", "tags"]) {
-    const value = body[field] ?? [];
-    project[field] = JSON.stringify(
-      Array.isArray(value)
-        ? value.map(String).map((item) => item.trim()).filter(Boolean)
-        : String(value)
-            .split("\n")
-            .map((item) => item.trim())
-            .filter(Boolean),
-    );
+  if (!/^[a-zA-Z0-9-]+$/.test(slug)) throw new Error("Project slug can only contain English letters, numbers, and hyphens.");
+  let year = body.year === "" || body.year == null ? null : Number(body.year);
+  if (year !== null && (!Number.isInteger(year) || year < 1900 || year > 2200)) throw new Error("Invalid project year.");
+  const sortOrder = Number(body.sort_order ?? 0);
+  if (!Number.isFinite(sortOrder)) throw new Error("Invalid display order.");
+  const project = {
+    title, slug, category, year,
+    client: String(body.client ?? "").trim(),
+    description,
+    role: String(body.role ?? "").trim(),
+    cover: String(body.cover ?? "").trim(),
+    hero: String(body.hero ?? "").trim(),
+    video: String(body.video ?? "").trim(),
+    case_study: JSON.stringify(parseMaybeJson(body.case_study, {})),
+    featured: body.featured ? 1 : 0,
+    published: body.published ? 1 : 0,
+    sort_order: Math.trunc(sortOrder),
+  };
+  for (const field of LIST_FIELDS) {
+    const value = Array.isArray(body[field]) ? body[field] : parseMaybeJson(body[field], []);
+    project[field] = JSON.stringify(Array.isArray(value) ? value : []);
   }
-
-  const caseStudy = body.case_study ?? body.caseStudy ?? {};
-  project.case_study = JSON.stringify(
-    typeof caseStudy === "object" && caseStudy !== null
-      ? caseStudy
-      : {},
-  );
-
-  if (!project.title || !project.slug) {
-    throw new Error("عنوان و شناسه پروژه الزامی است.");
-  }
-
-  if (!/^[a-zA-Z0-9-]+$/.test(project.slug)) {
-    throw new Error("شناسه پروژه فقط می‌تواند شامل حروف انگلیسی، عدد و خط تیره باشد.");
-  }
-
-  if (
-    project.year !== null &&
-    (!Number.isInteger(project.year) ||
-      project.year < 1900 ||
-      project.year > 2200)
-  ) {
-    throw new Error("سال پروژه معتبر نیست.");
-  }
-
-  if (!Number.isFinite(project.sort_order)) {
-    throw new Error("ترتیب نمایش معتبر نیست.");
-  }
-
   return project;
 }
 
-async function handleAdminApi(request, env, url) {
+function parseProject(row) {
+  if (!row) return row;
+  const result = { ...row };
+  for (const field of LIST_FIELDS) result[field] = parseMaybeJson(result[field], []);
+  result.case_study = parseMaybeJson(result.case_study, {});
+  result.featured = Boolean(result.featured);
+  result.published = Boolean(result.published);
+  return result;
+}
+
+function isUniqueConstraint(error) {
+  return /unique constraint|UNIQUE constraint/i.test(String(error?.message || error));
+}
+
+async function handleAdminApi(request, env) {
+  const url = new URL(request.url);
   const path = url.pathname;
-  const method = request.method;
+  const method = request.method.toUpperCase();
 
   if (path === "/api/admin/login" && method === "POST") {
-    if (!isSameOrigin(request)) {
-      return json({ error: "درخواست نامعتبر است." }, 403);
-    }
-
-    if (!env.ADMIN_PASSWORD || !env.ADMIN_SESSION_SECRET) {
-      return json({ error: "تنظیمات ورود کامل نیست." }, 500);
-    }
-
+    if (!isSameOrigin(request)) return json({ error: "Invalid request origin." }, 403);
+    if (!env.ADMIN_PASSWORD || !env.ADMIN_SESSION_SECRET) return json({ error: "Login configuration is incomplete." }, 500);
     let body;
-    try {
-      body = await request.json();
-    } catch {
-      return json({ error: "درخواست نامعتبر است." }, 400);
-    }
-
-    if (
-      typeof body.password !== "string" ||
-      body.password.length > 1024 ||
-      body.password !== env.ADMIN_PASSWORD
-    ) {
-      return json({ error: "رمز عبور اشتباه است." }, 401);
-    }
-
-    const payload = bytesToBase64Url(
-      new TextEncoder().encode(
-        JSON.stringify({
-          admin: true,
-          exp: Math.floor(Date.now() / 1000) + SESSION_DURATION,
-        }),
-      ),
-    );
-
-    const signature = await signSession(payload, env.ADMIN_SESSION_SECRET);
-    const token = `${payload}.${signature}`;
-
-    return json(
-      { ok: true },
-      200,
-      {
-        "Set-Cookie": [
-          `admin_session=${token}`,
-          "HttpOnly",
-          "Secure",
-          "SameSite=Strict",
-          "Path=/",
-          `Max-Age=${SESSION_DURATION}`,
-        ].join("; "),
-      },
-    );
+    try { body = await request.json(); } catch { return json({ error: "Invalid form data." }, 400); }
+    if (typeof body.password !== "string" || body.password !== env.ADMIN_PASSWORD) return json({ error: "Incorrect password." }, 401);
+    const token = await signSession({ role: "admin", exp: Math.floor(Date.now() / 1000) + SESSION_DURATION }, env.ADMIN_SESSION_SECRET);
+    return json({ ok: true, authenticated: true }, 200, {
+      "Set-Cookie": `${SESSION_COOKIE}=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${SESSION_DURATION}`,
+    });
   }
 
   if (path === "/api/admin/logout" && method === "POST") {
-    if (!isSameOrigin(request)) {
-      return json({ error: "درخواست نامعتبر است." }, 403);
-    }
-
-    return json(
-      { ok: true },
-      200,
-      {
-        "Set-Cookie":
-          "admin_session=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0",
-      },
-    );
+    if (!isSameOrigin(request)) return json({ error: "Invalid request origin." }, 403);
+    return json({ ok: true }, 200, { "Set-Cookie": `${SESSION_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0` });
   }
 
   if (path === "/api/admin/session" && method === "GET") {
-    const authenticated = await verifySession(request, env);
-    return json({ authenticated });
+    return json({ authenticated: await verifySession(request, env) });
   }
 
-  if (!(await verifySession(request, env))) {
-    return json({ error: "ابتدا وارد پنل شوید." }, 401);
-  }
-
-  if (method !== "GET" && !isSameOrigin(request)) {
-    return json({ error: "درخواست نامعتبر است." }, 403);
-  }
+  if (!path.startsWith("/api/admin/")) return json({ error: "Route not found." }, 404);
+  if (!await verifySession(request, env)) return json({ error: "Please log in first." }, 401);
+  if (method !== "GET" && !isSameOrigin(request)) return json({ error: "Invalid request origin." }, 403);
 
   if (path === "/api/admin/projects" && method === "GET") {
-    const { results } = await env.portfolio_db
-      .prepare(
-        `SELECT id, title, slug, category, year, client, description,
-          tools, cover, hero, video, gallery, role, services, software,
-          tags, case_study, featured, published, sort_order, created_at,
-          updated_at
-        FROM projects
-        ORDER BY sort_order ASC, created_at DESC`,
-      )
-      .all();
-
-    return json(
-      results.map((project) => ({
-        ...project,
-        tools: JSON.parse(project.tools || "[]"),
-        gallery: JSON.parse(project.gallery || "[]"),
-        services: JSON.parse(project.services || "[]"),
-        software: JSON.parse(project.software || "[]"),
-        tags: JSON.parse(project.tags || "[]"),
-        case_study: JSON.parse(project.case_study || "{}"),
-      })),
-    );
+    const result = await env.portfolio_db.prepare("SELECT * FROM projects ORDER BY sort_order ASC, created_at DESC").all();
+    return json({ projects: (result.results || []).map(parseProject) });
   }
 
   if (path === "/api/admin/projects" && method === "POST") {
     let body;
-    try {
-      body = await request.json();
-    } catch {
-      return json({ error: "داده‌های فرم معتبر نیستند." }, 400);
-    }
-
+    try { body = await request.json(); } catch { return json({ error: "Invalid form data." }, 400); }
     let project;
-    try {
-      project = normalizeProject(body);
-    } catch (error) {
-      return json({ error: error.message }, 400);
-    }
-
+    try { project = normalizeProject(body); } catch (error) { return json({ error: error.message || "Invalid form data." }, 400); }
     const id = crypto.randomUUID();
-
+    const columns = ["id", ...PROJECT_COLUMNS];
+    const values = [id, ...PROJECT_COLUMNS.map((column) => project[column])];
+    const placeholders = columns.map(() => "?").join(", ");
     try {
-      await env.portfolio_db
-        .prepare(
-          `INSERT INTO projects (
-            id, title, slug, category, year, client, description, tools,
-            cover, hero, video, gallery, role, services, software, tags,
-            case_study, featured, published, sort_order, updated_at
-          ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-            CURRENT_TIMESTAMP
-          )`,
-        )
-        .bind(
-          id,
-          project.title,
-          project.slug,
-          project.category,
-          project.year,
-          project.client,
-          project.description,
-          project.tools,
-          project.cover,
-          project.hero,
-          project.video,
-          project.gallery,
-          project.role,
-          project.services,
-          project.software,
-          project.tags,
-          project.case_study,
-          project.featured,
-          project.published,
-          project.sort_order,
-        )
-        .run();
-
-      return json({ ok: true, id }, 201);
+      await env.portfolio_db.prepare(`INSERT INTO projects (${columns.join(", ")}) VALUES (${placeholders})`).bind(...values).run();
+      const row = await env.portfolio_db.prepare("SELECT * FROM projects WHERE id = ?").bind(id).first();
+      return json({ ok: true, id, project: parseProject(row) }, 201);
     } catch (error) {
-      return json(
-        {
-          error: String(error?.message || "").includes("UNIQUE")
-            ? "این شناسه قبلاً استفاده شده است."
-            : "ذخیره پروژه انجام نشد.",
-        },
-        400,
-      );
+      if (isUniqueConstraint(error)) return json({ error: "This slug is already in use." }, 409);
+      return json({ error: "Failed to save project." }, 500);
+    }
+  }
+
+  if (path === "/api/admin/projects/reorder" && method === "POST") {
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "Invalid form data." }, 400); }
+    if (!Array.isArray(body.ids) || body.ids.some((id) => typeof id !== "string") || new Set(body.ids).size !== body.ids.length) {
+      return json({ error: "Invalid project order." }, 400);
+    }
+    try {
+      const existing = await env.portfolio_db.prepare("SELECT id FROM projects").all();
+      const existingIds = new Set((existing.results || []).map((row) => row.id));
+      if (body.ids.length !== existingIds.size || body.ids.some((id) => !existingIds.has(id))) return json({ error: "Project list changed. Refresh and try again." }, 409);
+      const statements = body.ids.map((id, index) => env.portfolio_db.prepare("UPDATE projects SET sort_order = ? WHERE id = ?").bind(index, id));
+      if (statements.length) await env.portfolio_db.batch(statements);
+      return json({ ok: true });
+    } catch {
+      return json({ error: "Failed to save project order." }, 500);
     }
   }
 
   const projectMatch = path.match(/^\/api\/admin\/projects\/([^/]+)$/);
-
   if (projectMatch) {
     const id = decodeURIComponent(projectMatch[1]);
-
     if (method === "PUT") {
       let body;
-      try {
-        body = await request.json();
-      } catch {
-        return json({ error: "داده‌های فرم معتبر نیستند." }, 400);
-      }
-
+      try { body = await request.json(); } catch { return json({ error: "Invalid form data." }, 400); }
       let project;
+      try { project = normalizeProject(body); } catch (error) { return json({ error: error.message || "Invalid form data." }, 400); }
+      const assignments = PROJECT_COLUMNS.map((column) => `${column} = ?`).join(", ");
       try {
-        project = normalizeProject(body);
+        const result = await env.portfolio_db.prepare(`UPDATE projects SET ${assignments} WHERE id = ?`).bind(...PROJECT_COLUMNS.map((column) => project[column]), id).run();
+        if (!result.meta?.changes) return json({ error: "Project not found." }, 404);
+        const row = await env.portfolio_db.prepare("SELECT * FROM projects WHERE id = ?").bind(id).first();
+        return json({ ok: true, project: parseProject(row) });
       } catch (error) {
-        return json({ error: error.message }, 400);
-      }
-
-      try {
-        const result = await env.portfolio_db
-          .prepare(
-            `UPDATE projects SET
-              title = ?, slug = ?, category = ?, year = ?, client = ?,
-              description = ?, tools = ?, cover = ?, hero = ?, video = ?,
-              gallery = ?, role = ?, services = ?, software = ?, tags = ?,
-              case_study = ?, featured = ?, published = ?, sort_order = ?,
-              updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?`,
-          )
-          .bind(
-            project.title,
-            project.slug,
-            project.category,
-            project.year,
-            project.client,
-            project.description,
-            project.tools,
-            project.cover,
-            project.hero,
-            project.video,
-            project.gallery,
-            project.role,
-            project.services,
-            project.software,
-            project.tags,
-            project.case_study,
-            project.featured,
-            project.published,
-            project.sort_order,
-            id,
-          )
-          .run();
-
-        if (!result.meta.changes) {
-          return json({ error: "پروژه پیدا نشد." }, 404);
-        }
-
-        return json({ ok: true });
-      } catch (error) {
-        return json(
-          {
-            error: String(error?.message || "").includes("UNIQUE")
-              ? "این شناسه قبلاً استفاده شده است."
-              : "ویرایش پروژه انجام نشد.",
-          },
-          400,
-        );
+        if (isUniqueConstraint(error)) return json({ error: "This slug is already in use." }, 409);
+        return json({ error: "Failed to update project." }, 500);
       }
     }
-
     if (method === "DELETE") {
-      const result = await env.portfolio_db
-        .prepare("DELETE FROM projects WHERE id = ?")
-        .bind(id)
-        .run();
-
-      if (!result.meta.changes) {
-        return json({ error: "پروژه پیدا نشد." }, 404);
-      }
-
+      const result = await env.portfolio_db.prepare("DELETE FROM projects WHERE id = ?").bind(id).run();
+      if (!result.meta?.changes) return json({ error: "Project not found." }, 404);
       return json({ ok: true });
     }
   }
 
-  return json({ error: "مسیر پیدا نشد." }, 404);
+  return json({ error: "Route not found." }, 404);
 }
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-
-    if (url.pathname.startsWith("/api/admin/")) {
-      try {
-        return await handleAdminApi(request, env, url);
-      } catch (error) {
-        console.error("Admin API error:", error);
-        return json({ error: "خطای سرور رخ داد." }, 500);
+    try {
+      if (url.pathname.startsWith("/api/admin/")) return await handleAdminApi(request, env);
+      if (url.pathname === "/api/health") return json({ ok: true });
+      if (url.pathname === "/api/db-check") {
+        const result = await env.portfolio_db.prepare("SELECT COUNT(*) AS count FROM projects").first();
+        return json({ ok: true, projects: result?.count ?? 0 });
       }
-    }
-
-    if (url.pathname === "/api/health") {
-      return json({
-        status: "ok",
-        message: "Portfolio API is running",
-      });
-    }
-
-    if (url.pathname === "/api/db-check") {
-      try {
-        const result = await env.portfolio_db
-          .prepare(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'projects'",
-          )
-          .first();
-
-        return json({
-          status: result ? "ok" : "error",
-          database: result ? "connected" : "projects table not found",
+      if (url.pathname === "/api/projects" && request.method === "GET") {
+        const result = await env.portfolio_db.prepare("SELECT * FROM projects WHERE published = 1 ORDER BY sort_order ASC, created_at DESC").all();
+        const projects = (result.results || []).map((row) => {
+          const parsed = parseProject(row);
+          return {
+            ...parsed,
+            caseStudy: parsed.case_study,
+            media: { cover: parsed.cover, hero: parsed.hero, video: parsed.video, gallery: parsed.gallery },
+          };
         });
-      } catch {
-        return json(
-          { status: "error", message: "Database connection failed" },
-          500,
-        );
+        return json({ projects }, 200, { "Cache-Control": "public, max-age=60, s-maxage=60" });
       }
+      return env.ASSETS.fetch(request);
+    } catch (error) {
+      return json({ error: "A server error occurred." }, 500);
     }
-
-    if (url.pathname === "/api/projects") {
-      try {
-        const { results } = await env.portfolio_db
-          .prepare(
-            `SELECT
-              id, title, slug, category, year, client, description,
-              tools, cover, hero, video, gallery, role, services,
-              software, tags, case_study, featured, published, sort_order
-            FROM projects
-            WHERE published = 1
-            ORDER BY sort_order ASC, created_at DESC`,
-          )
-          .all();
-
-        const projects = results.map((project) => ({
-          ...project,
-          tools: JSON.parse(project.tools || "[]"),
-          gallery: JSON.parse(project.gallery || "[]"),
-          services: JSON.parse(project.services || "[]"),
-          software: JSON.parse(project.software || "[]"),
-          tags: JSON.parse(project.tags || "[]"),
-          caseStudy: JSON.parse(project.case_study || "{}"),
-          media: {
-            cover: project.cover || null,
-            hero: project.hero || null,
-            video: project.video || null,
-            gallery: JSON.parse(project.gallery || "[]"),
-          },
-        }));
-
-        return json(projects);
-      } catch {
-        return json({ error: "Could not load projects" }, 500);
-      }
-    }
-
-    if (url.pathname.startsWith("/api/")) {
-      return json({ error: "Not found" }, 404);
-    }
-
-    return new Response(null, { status: 404 });
   },
 };
