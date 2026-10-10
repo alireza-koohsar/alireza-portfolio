@@ -1,9 +1,11 @@
+
 import { useState } from "react";
-import projects from "../data/projects";
+import useProjects from "../hooks/useProjects";
 import ProjectCard from "../components/ProjectCard";
 
 function Work() {
   const [activeFilter, setActiveFilter] = useState("All");
+  const { projects, loading, error } = useProjects();
 
   const categories = [
     "All",
@@ -20,12 +22,8 @@ function Work() {
 
   return (
     <main className="work-page">
-
       <section className="work-header">
-
-        <p className="section-label">
-          SELECTED WORK
-        </p>
+        <p className="section-label">SELECTED WORK</p>
 
         <h1>
           Projects, experiments
@@ -38,14 +36,10 @@ function Work() {
           3D and digital projects created across different
           industries and creative environments.
         </p>
-
       </section>
 
-
       <section className="work-content">
-
         <div className="work-filters">
-
           {categories.map((category) => (
             <button
               key={category}
@@ -59,28 +53,36 @@ function Work() {
               {category}
             </button>
           ))}
-
         </div>
 
+        {loading && (
+          <p>Loading projects...</p>
+        )}
 
-        <div className="work-grid">
+        {error && (
+          <p role="alert">{error}</p>
+        )}
 
-          {filteredProjects.map((project) => (
-<ProjectCard
-  key={project.id}
-  id={project.id}
-  title={project.title}
-  category={project.category}
-  year={project.year}
-  image={project.media.cover}
-  video={project.media.video}
-/>
-          ))}
+        {!loading && !error && filteredProjects.length === 0 && (
+          <p>No projects found in this category.</p>
+        )}
 
-        </div>
-
+        {!loading && !error && filteredProjects.length > 0 && (
+          <div className="work-grid">
+            {filteredProjects.map((project) => (
+              <ProjectCard
+                key={project.id}
+                id={project.id}
+                title={project.title}
+                category={project.category}
+                year={project.year}
+                image={project.media.cover}
+                video={project.media.video}
+              />
+            ))}
+          </div>
+        )}
       </section>
-
     </main>
   );
 }

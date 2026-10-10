@@ -1,9 +1,11 @@
+
 import { useRef } from "react";
 import { Link } from "react-router-dom";
 import ProjectCard from "../components/ProjectCard";
-import projects from "../data/projects";
+import useProjects from "../hooks/useProjects";
 
 function Home() {
+  const { projects, loading, error } = useProjects();
   const showcaseRef = useRef(null);
   const isDragging = useRef(false);
   const startX = useRef(0);
@@ -254,22 +256,26 @@ function Home() {
         </div>
 
 
-        <div className="projects-grid">
 
-          {projects.slice(0, 4).map((project) => (
-            <ProjectCard
-              key={project.id}
-              id={project.id}
-              title={project.title}
-              category={project.category}
-              year={project.year}
-              image={project.media.cover}
-              video={project.media.video}
+<div className="projects-grid">
 
-            />
-          ))}
+  {loading && <p>Loading projects...</p>}
 
-        </div>
+  {error && <p role="alert">{error}</p>}
+
+  {!loading && !error && projects.slice(0, 4).map((project) => (
+    <ProjectCard
+      key={project.id}
+      id={project.id}
+      title={project.title}
+      category={project.category}
+      year={project.year}
+      image={project.media.cover}
+      video={project.media.video}
+    />
+  ))}
+
+</div>
 
       </section>
 
@@ -304,59 +310,56 @@ function Home() {
   onPointerCancel={handlePointerUp}
 >
 
-    {projects.slice(0, 4).map((project) => (
-      <a
-        key={project.id}
-        href={`/work/${project.id}`}
-        className="showcase-item"
-      >
 
-        <div className="showcase-image">
+{loading && <p>Loading projects...</p>}
 
-          {project.media.video ? (
-            <video
-              src={project.media.video}
-              poster={project.media.cover}
-              muted
-              loop
-              playsInline
-              preload="metadata"
-            />
-          ) : (
-            <img
-              src={project.media.cover}
-              alt={project.title}
-            />
-          )}
+{error && <p role="alert">{error}</p>}
 
-          <span className="showcase-number">
-            {String(projects.indexOf(project) + 1).padStart(2, "0")}
-          </span>
-
+{!loading && !error && projects.slice(0, 4).map((project, index) => (
+  <Link
+    key={project.id}
+    to={`/work/${project.id}`}
+    className="showcase-item"
+    draggable={false}
+  >
+    <div className="showcase-image">
+      {project.media.video ? (
+        <video
+          src={project.media.video}
+          poster={project.media.cover || undefined}
+          muted
+          loop
+          playsInline
+          preload="metadata"
+        />
+      ) : project.media.cover ? (
+        <img
+          src={project.media.cover}
+          alt={project.title}
+          draggable={false}
+        />
+      ) : (
+        <div className="project-placeholder">
+          {project.category}
         </div>
+      )}
 
-        <div className="showcase-info">
+      <span className="showcase-number">
+        {String(index + 1).padStart(2, "0")}
+      </span>
+    </div>
 
-          <div>
-            <h3>
-              {project.title}
-            </h3>
+    <div className="showcase-info">
+      <div>
+        <h3>{project.title}</h3>
+        <p>{project.category}</p>
+      </div>
 
-            <p>
-              {project.category}
-            </p>
-          </div>
-
-          <span>
-            {project.year}
-          </span>
-
-        </div>
-
-      </a>
-    ))}
-
-  </div>
+      <span>{project.year}</span>
+    </div>
+  </Link>
+))}
+</div>
 
 </section>
 

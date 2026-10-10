@@ -1,0 +1,16 @@
+
+{
+  "name": "alireza-portfolio",
+  "main": "./worker/index.js",
+  "compatibility_date": "2026-10-08",
+  "assets": {
+    "not_found_handling": "single-page-application"
+  },
+  "d1_databases": [
+    {
+      "binding": "portfolio_db",
+      "database_name": "portfolio-db",
+      "database_id": "254948c3-4e35-4608-b4d0-b23d6a8f8367"
+    }
+  ]
+}

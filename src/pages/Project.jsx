@@ -1,10 +1,11 @@
+
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import projects from "../data/projects";
+import useProjects from "../hooks/useProjects";
 
 function Project() {
   const { projectId } = useParams();
-
+  const { projects, loading, error } = useProjects();
   const [lightboxIndex, setLightboxIndex] = useState(null);
 
   // Swipe
@@ -122,14 +123,29 @@ function Project() {
      PROJECT NOT FOUND
      ========================= */
 
+
+  if (loading) {
+    return (
+      <main className="project-page">
+        <p>Loading project...</p>
+      </main>
+    );
+  }
+
+  if (error) {
+    return (
+      <main className="project-page">
+        <p role="alert">{error}</p>
+        <Link to="/work">← Back to Work</Link>
+      </main>
+    );
+  }
+
   if (!project) {
     return (
       <main className="project-page">
         <h1>Project not found</h1>
-
-        <Link to="/work">
-          ← Back to Work
-        </Link>
+        <Link to="/work">← Back to Work</Link>
       </main>
     );
   }
