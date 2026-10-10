@@ -20,16 +20,18 @@ function getCookie(request, name) {
   return entry ? entry.slice(name.length + 1) : null;
 }
 
+
 function bytesToBase64Url(bytes) {
   let binary = "";
+
   for (const byte of bytes) {
     binary += String.fromCharCode(byte);
   }
 
   return btoa(binary)
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/, "");
 }
 
 function base64UrlToBytes(value) {
