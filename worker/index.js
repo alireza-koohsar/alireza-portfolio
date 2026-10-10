@@ -437,7 +437,8 @@ export default {
     if (url.pathname.startsWith("/api/admin/")) {
       try {
         return await handleAdminApi(request, env, url);
-      } catch {
+      } catch (error) {
+        console.error("Admin API error:", error);
         return json({ error: "خطای سرور رخ داد." }, 500);
       }
     }
