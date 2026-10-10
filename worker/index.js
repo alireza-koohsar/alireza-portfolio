@@ -21,11 +21,13 @@ function getCookie(request, name) {
 }
 
 
+
 function bytesToBase64Url(bytes) {
+  const data = new Uint8Array(bytes);
   let binary = "";
 
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
+  for (let i = 0; i < data.length; i++) {
+    binary += String.fromCharCode(data[i]);
   }
 
   return btoa(binary)
