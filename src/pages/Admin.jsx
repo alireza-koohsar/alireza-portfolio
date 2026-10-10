@@ -302,16 +302,22 @@ export default function Admin() {
               />
             </label>
 
-            {listFields.map(([name, label]) => (
-              <label className="admin-field" key={name}>
-                <span>{label}</span>
-                <textarea
-                  rows="4"
-                  value={Array.isArray(project[name]) ? project[name].join("\n") : ""}
-                  onChange={(event) => updateField(name, event.target.value)}
-                />
-              </label>
-            ))}
+
+{listFields.map(([name, label]) => (
+  <label className="admin-field" key={name}>
+    <span>{label}</span>
+    <textarea
+      rows={4}
+      value={
+        Array.isArray(project[name])
+          ? project[name].join("\n")
+          : project[name] ?? ""
+      }
+      onChange={(event) => updateField(name, event.target.value)}
+      placeholder="هر مورد را در یک خط وارد کن"
+    />
+  </label>
+))}
 
             <label className="admin-field">
               <span>ترتیب نمایش</span>
