@@ -240,7 +240,10 @@ export default {
             media: { cover: parsed.cover, hero: parsed.hero, video: parsed.video, gallery: parsed.gallery },
           };
         });
-        return json({ projects }, 200, { "Cache-Control": "public, max-age=60, s-maxage=60" });
+
+return json(projects, 200, {
+  "Cache-Control": "public, max-age=60, s-maxage=60"
+});
       }
       return env.ASSETS.fetch(request);
     } catch (error) {
